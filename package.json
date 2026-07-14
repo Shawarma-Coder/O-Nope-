@@ -1,0 +1,29 @@
+{
+  "name": "o(nope)",
+  "version": "1.0.0",
+  "description": "A secure remote code execution platform where developers solve algorithmic challenges, while a strict AI mentor analyzes time complexity and critiques inefficient brute-force coding solutions.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Shawarma-Coder/O-Nope-.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Shawarma-Coder/O-Nope-/issues"
+  },
+  "homepage": "https://github.com/Shawarma-Coder/O-Nope-#readme",
+  "devDependencies": {
+    "prisma": "^7.8.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.8.0"
+  }
+}
