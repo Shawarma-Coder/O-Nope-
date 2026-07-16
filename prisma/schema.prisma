@@ -1,13 +1,41 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
-generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
-}
-
+// 1. DATABASE CONFIGURATION
+// This tells Prisma to use a local SQLite file named 'dev.db'
 datasource db {
   provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// This generates the JavaScript client we will use to talk to the database
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 2. THE PROBLEM TABLE
+// Stores the actual coding challenges
+model Problem {
+  id            String     @id @default(cuid())
+  title         String
+  description   String
+  difficulty    String     // "Easy", "Medium", "Hard"
+  expectedTime  String     // e.g., "O(N)" - Used by the AI Mentor
+  expectedSpace String     // e.g., "O(1)" - Used by the AI Mentor
+  
+  // A problem can have many test cases (One-to-Many relationship)
+  testCases     TestCase[] 
+}
+
+// 3. THE TEST CASE TABLE
+// Stores the inputs and expected outputs for the execution engine
+model TestCase {
+  id        String  @id @default(cuid())
+  
+  // Links this test case to a specific problem
+  problemId String
+  problem   Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  
+  input     String  // What gets fed into the C++ program (e.g., "2 7 11 15\n9")
+  expected  String  // What the C++ program MUST output (e.g., "0 1")
+  
+  // If true, the frontend hides this from the user, but the backend still tests against it!
+  isHidden  Boolean @default(false)
 }
