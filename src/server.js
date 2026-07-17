@@ -11,7 +11,6 @@ const PORT = 5000;
 app.use(express.json());
 
 // 1. Mount Phase 2 Database Routes
-// This makes GET /api/problems and GET /api/problems/:id active
 app.use('/api/problems', problemsRouter);
 
 // 2. Core Execution Endpoint (Phase 1)
@@ -24,8 +23,6 @@ app.post('/api/execute', (req, res) => {
     
     // Generate a unique ID and paths for this execution run
     const runId = crypto.randomUUID();
-    
-    // Using path.join handles folder separators cleanly across Windows/Linux
     const tempDir = path.join(__dirname, '..', 'temp', runId);
     
     try {
@@ -43,8 +40,9 @@ app.post('/api/execute', (req, res) => {
     const compileAndRunCmd = `g++ solution.cpp -o app && time ./app < input.txt`;
 
     // The Docker command with security constraints
-    // NOTE: Using absolute path resolution for mounting volumes securely
-    const absoluteTempPath = path.resolve(tempDir);
+    // ADDED: Fix Windows backslashes so Docker doesn't get confused by the path
+    const absoluteTempPath = path.resolve(tempDir).replace(/\\/g, '/'); 
+    
     const dockerCmd = `docker run --rm \
         --name ${runId} \
         --network none \
@@ -54,8 +52,8 @@ app.post('/api/execute', (req, res) => {
         cpp-sandbox \
         sh -c "${compileAndRunCmd}"`;
 
-    // Fire the command using a 5-second max boundary limit
-    exec(dockerCmd, { timeout: 5000, cwd: tempDir }, (error, stdout, stderr) => {
+    // CHANGED: Increased timeout from 5000 to 10000ms to allow WSL2 to "wake up"
+    exec(dockerCmd, { timeout: 10000, cwd: tempDir }, (error, stdout, stderr) => {
         
         // Cleanup: Obliterate the temporary folder immediately to save disk space
         try {
@@ -69,7 +67,7 @@ app.post('/api/execute', (req, res) => {
             if (error.killed) {
                 return res.json({ 
                     status: "Time Limit Exceeded", 
-                    error: "Your code ran for longer than the 5-second constraint allowed." 
+                    error: "Your code ran for longer than the 10-second constraint allowed." 
                 });
             }
             // Compilation errors or crashes output to stderr
