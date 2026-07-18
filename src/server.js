@@ -3,44 +3,56 @@ const fs = require('fs');
 const { exec } = require('child_process');
 const crypto = require('crypto');
 const path = require('path');
-const problemsRouter = require('./routes/problems'); // Importing Phase 2 Routes
+const { PrismaClient } = require('@prisma/client');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+
+// Load environment variables from .env
+require('dotenv').config();
+
+const problemsRouter = require('./routes/problems'); 
 
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
+const prisma = new PrismaClient();
+
+// Initialize Gemini
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 app.use(express.json());
-
-// 1. Mount Phase 2 Database Routes
 app.use('/api/problems', problemsRouter);
 
-// 2. Core Execution Endpoint (Phase 1)
-app.post('/api/execute', (req, res) => {
-    const { sourceCode, inputData } = req.body;
+app.post('/api/execute', async (req, res) => { // <-- Made this async
+    const { sourceCode, inputData, problemId } = req.body; // <-- Added problemId
     
-    if (!sourceCode) {
-        return res.status(400).json({ status: "Error", message: "Source code is required." });
+    if (!sourceCode) return res.status(400).json({ status: "Error", message: "Source code is required." });
+
+    // 1. Fetch expected constraints from the database (Phase 2 integration)
+    let expectedTime = "Unknown";
+    let expectedSpace = "Unknown";
+    if (problemId) {
+        try {
+            const problem = await prisma.problem.findUnique({ where: { id: problemId } });
+            if (problem) {
+                expectedTime = problem.expectedTime;
+                expectedSpace = problem.expectedSpace;
+            }
+        } catch (dbError) {
+            console.error("Database lookup failed:", dbError);
+        }
     }
-    
-    // Generate a unique ID and paths for this execution run
+
     const runId = crypto.randomUUID();
     const tempDir = path.join(__dirname, '..', 'temp', runId);
     
     try {
-        // Create a temporary folder for this specific run
         fs.mkdirSync(tempDir, { recursive: true });
-        
-        // Write the C++ code and the test case input to files
         fs.writeFileSync(path.join(tempDir, 'solution.cpp'), sourceCode);
         fs.writeFileSync(path.join(tempDir, 'input.txt'), inputData || "");
     } catch (fsError) {
-        return res.status(500).json({ status: "Error", message: "Failed to initialize files on disk." });
+        return res.status(500).json({ status: "Error", message: "Failed to write files." });
     }
 
-    // Inside Linux container: compile, feed input.txt via stdin, time the binary execution
     const compileAndRunCmd = `g++ solution.cpp -o app && time ./app < input.txt`;
-
-    // The Docker command with security constraints
-    // ADDED: Fix Windows backslashes so Docker doesn't get confused by the path
     const absoluteTempPath = path.resolve(tempDir).replace(/\\/g, '/'); 
     
     const dockerCmd = `docker run --rm \
@@ -52,38 +64,50 @@ app.post('/api/execute', (req, res) => {
         cpp-sandbox \
         sh -c "${compileAndRunCmd}"`;
 
-    // CHANGED: Increased timeout from 5000 to 10000ms to allow WSL2 to "wake up"
-    exec(dockerCmd, { timeout: 10000, cwd: tempDir }, (error, stdout, stderr) => {
-        
-        // Cleanup: Obliterate the temporary folder immediately to save disk space
-        try {
-            fs.rmSync(tempDir, { recursive: true, force: true });
-        } catch (cleanupError) {
-            console.error(`Failed to clean up folder: ${tempDir}`, cleanupError);
-        }
+    exec(dockerCmd, { timeout: 10000, cwd: tempDir }, async (error, stdout, stderr) => {
+        try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (e) {}
 
-        // Handle timeouts or structural shell errors
+        let executionStatus = "Success";
         if (error) {
-            if (error.killed) {
-                return res.json({ 
-                    status: "Time Limit Exceeded", 
-                    error: "Your code ran for longer than the 10-second constraint allowed." 
-                });
-            }
-            // Compilation errors or crashes output to stderr
-            return res.json({ status: "Runtime/Compilation Error", details: stderr || error.message });
+            executionStatus = error.killed ? "Time Limit Exceeded" : "Runtime/Compilation Error";
         }
 
-        // Execution succeeded! Return standard output along with execution metrics
+        // 2. The AI Mentor Prompt Template (Phase 3 Integration)
+        let aiFeedback = "AI Feedback unavailable.";
+        try {
+            const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+            const prompt = `
+                You are a strict, senior C++ technical interviewer. A candidate has submitted a solution to an algorithmic problem.
+                
+                Expected Time Complexity: ${expectedTime}
+                Expected Space Complexity: ${expectedSpace}
+                Execution Status: ${executionStatus}
+                GNU Time Metrics: ${stderr || "None"}
+                
+                Candidate's C++ Code:
+                ${sourceCode}
+
+                Instructions:
+                1. If the code has a syntax error, briefly explain what went wrong.
+                2. If the code works, analyze its time and space complexity. 
+                3. If their complexity is worse than the expected complexity, give them a hint on how to optimize it, but DO NOT write the code for them.
+                4. Keep your response under 4 sentences. Be direct and professional.
+            `;
+
+            const result = await model.generateContent(prompt);
+            aiFeedback = result.response.text();
+        } catch (aiError) {
+            console.error("Gemini AI Error:", aiError);
+        }
+
+        // 3. Send everything back to the user
         res.json({ 
-            status: "Success", 
-            output: stdout,
-            metrics: stderr // The GNU 'time' command outputs statistics to stderr
+            status: executionStatus, 
+            output: stdout || error?.message,
+            metrics: stderr,
+            aiMentor: aiFeedback // <-- The AI speaks!
         });
     });
 });
 
-// Start the backend web server
-app.listen(PORT, () => {
-    console.log(`Server running smoothly on http://localhost:${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running smoothly on http://localhost:${PORT}`));
