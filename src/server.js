@@ -4,7 +4,7 @@ const { exec } = require('child_process');
 const crypto = require('crypto');
 const path = require('path');
 const { PrismaClient } = require('@prisma/client');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleGenAI } = require('@google/genai');
 
 // Load environment variables from .env
 require('dotenv').config();
@@ -16,7 +16,7 @@ const PORT = process.env.PORT || 5000;
 const prisma = new PrismaClient();
 
 // Initialize Gemini
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const ai = new GoogleGenAI(process.env.GEMINI_API_KEY);
 
 app.use(express.json());
 app.use('/api/problems', problemsRouter);
@@ -73,32 +73,34 @@ app.post('/api/execute', async (req, res) => { // <-- Made this async
         }
 
         // 2. The AI Mentor Prompt Template (Phase 3 Integration)
+
         let aiFeedback = "AI Feedback unavailable.";
         try {
-            const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-            const prompt = `
-                You are a strict, senior C++ technical interviewer. A candidate has submitted a solution to an algorithmic problem.
-                
-                Expected Time Complexity: ${expectedTime}
-                Expected Space Complexity: ${expectedSpace}
-                Execution Status: ${executionStatus}
-                GNU Time Metrics: ${stderr || "None"}
-                
-                Candidate's C++ Code:
-                ${sourceCode}
+            const response = await ai.models.generateContent({
+                model: "gemini-2.0-flash", // Use a supported model from their new registry
+                contents: `
+                    You are a strict, senior C++ technical interviewer. A candidate has submitted a solution to an algorithmic problem.
+                    
+                    Expected Time Complexity: ${expectedTime}
+                    Expected Space Complexity: ${expectedSpace}
+                    Execution Status: ${executionStatus}
+                    GNU Time Metrics: ${stderr || "None"}
+                    
+                    Candidate's C++ Code:
+                    ${sourceCode}
 
-                Instructions:
-                1. If the code has a syntax error, briefly explain what went wrong.
-                2. If the code works, analyze its time and space complexity. 
-                3. If their complexity is worse than the expected complexity, give them a hint on how to optimize it, but DO NOT write the code for them.
-                4. Keep your response under 4 sentences. Be direct and professional.
-            `;
-
-            const result = await model.generateContent(prompt);
-            aiFeedback = result.response.text();
+                    Instructions:
+                    1. If the code has a syntax error, briefly explain what went wrong.
+                    2. If the code works, analyze its time and space complexity. 
+                    3. If their complexity is worse than the expected complexity, give them a hint on how to optimize it, but DO NOT write the code for them.
+                    4. Keep your response under 4 sentences. Be direct and professional.
+                `,
+            });
+            aiFeedback = response.text();
         } catch (aiError) {
             console.error("Gemini AI Error:", aiError);
         }
+        // ... existing code ...
 
         // 3. Send everything back to the user
         res.json({ 
