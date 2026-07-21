@@ -77,7 +77,7 @@ app.post('/api/execute', async (req, res) => { // <-- Made this async
         let aiFeedback = "AI Feedback unavailable.";
         try {
             const response = await ai.models.generateContent({
-                model: "gemini-2.0-flash", // Use a supported model from their new registry
+                model: "gemini-3.5-flash", // Use a supported model from their new registry
                 contents: `
                     You are a strict, senior C++ technical interviewer. A candidate has submitted a solution to an algorithmic problem.
                     
@@ -96,7 +96,7 @@ app.post('/api/execute', async (req, res) => { // <-- Made this async
                     4. Keep your response under 4 sentences. Be direct and professional.
                 `,
             });
-            aiFeedback = response.text();
+            aiFeedback = response.text;
         } catch (aiError) {
             console.error("Gemini AI Error:", aiError);
         }

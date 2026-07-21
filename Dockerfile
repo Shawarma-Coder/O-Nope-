@@ -7,6 +7,6 @@ RUN apk add --no-cache g++
 # Create directory for our work
 WORKDIR /sandbox
 
-# setting a non root user to work as in the image
+# setting a non root user to work as in the image   
 RUN adduser -D coder
 USER coder

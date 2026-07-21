@@ -3,3 +3,16 @@ node_modules
 .env
 
 /src/generated/prisma
+
+# --- Add these to keep your repo clean ---
+
+# Local Database: Ignore your local SQLite database so you don't overwrite production data
+prisma/dev.db
+prisma/dev.db-journal
+
+# Temporary Files: Ignore the folder where user code is temporarily saved for Docker
+temp/
+
+# OS generated files
+.DS_Store
+Thumbs.db
